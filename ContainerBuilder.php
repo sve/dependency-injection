@@ -1029,6 +1029,32 @@ class ContainerBuilder extends Container implements TaggedContainerInterface
 
         $arguments = $this->doResolveServices($parameterBag->unescapeValue($parameterBag->resolveValue($arguments)), $inlineServices, $isConstructorArgument);
 
+        $reflectionClass = new \ReflectionClass($definition->getClass());
+        $constructor = $reflectionClass->getConstructor();
+        if ($constructor && !$arguments) {
+            $constructor->setAccessible(true);
+
+            foreach ($constructor->getParameters() as $parameter) {
+                $type = $parameter->getType();
+                if ($type && (!method_exists($type, 'isBuiltin') || $type->isBuiltin())) {
+                    continue;
+                }
+
+                try {
+                    $name = $parameter->getName();
+                    $type = $parameter->getType()->getName();
+                    $class = str_replace('Interface', '', $type);
+                    $this->autowire($type, $type);
+                    $this->autowire($type, $class);
+                    $this->autowire($name, $type);
+                    $container = $this->get($type);
+                    if ($container) {
+                        $arguments[$name] = $container;
+                    }
+                } catch (\Exception $exception) {}
+            }
+        }
+
         if (null !== $id && $definition->isShared() && (isset($this->services[$id]) || isset($this->privates[$id])) && (true === $tryProxy || !$definition->isLazy())) {
             return $this->services[$id] ?? $this->privates[$id];
         }
